@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Transcriber</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-alt: #1c2029;
+    --border: #2a2f3a;
+    --text: #e7e9ee;
+    --muted: #9aa2b1;
+    --accent: #7c5cff;
+    --accent-hover: #6b4be0;
+    --error: #ff6b6b;
+    --success: #4cd787;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  .wrap { width: 100%; max-width: 720px; }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; margin-bottom: 20px; font-size: 0.95rem; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    background: none; border: none; color: var(--muted);
+    padding: 10px 16px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .mode-btn {
+    background: var(--panel-alt); border: 1px solid var(--border); color: var(--muted);
+    padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; cursor: pointer;
+  }
+  .mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  textarea, input[type="text"] {
+    width: 100%;
+    background: #0c0e13;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    outline: none;
+    font-family: inherit;
+    resize: vertical;
+  }
+  textarea:focus, input[type="text"]:focus { border-color: var(--accent); }
+
+  .file-drop {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .file-drop:hover { border-color: var(--accent); }
+  .file-names { margin-top: 8px; font-size: 0.8rem; color: var(--text); }
+
+  .options {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 14px 0;
+    flex-wrap: wrap;
+  }
+  .options label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .options select {
+    background: #0c0e13;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .options input[type="checkbox"] { accent-color: var(--accent); }
+
+  button.primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 11px 20px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+  }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .jobs { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .job-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .job-head { display: flex; gap: 10px; align-items: center; }
+  .job-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--panel-alt); flex-shrink: 0; }
+  .job-title { font-size: 0.92rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-platform { font-size: 0.75rem; color: var(--muted); }
+  .job-stage { margin-top: 10px; font-size: 0.85rem; color: var(--muted); }
+  .job-stage.error { color: var(--error); }
+
+  .spinner {
+    display: inline-block;
+    width: 13px; height: 13px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 7px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .result-block { margin-top: 12px; }
+  .result-meta { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
+  .transcript-box {
+    width: 100%;
+    min-height: 90px;
+    background: #0c0e13;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 14px;
+    line-height: 1.6;
+    font-size: 0.92rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .btn-sm {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .btn-sm:hover { border-color: var(--accent); }
+  .btn-sm.danger:hover { border-color: var(--error); color: var(--error); }
+  .retry-btn { margin-top: 8px; }
+  .load-more-btn { width: 100%; text-align: center; margin-top: 4px; }
+
+  #historyList { display: flex; flex-direction: column; gap: 10px; }
+  .history-item {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+  }
+  .history-item:hover { border-color: var(--accent); }
+  .history-item-top { display: flex; justify-content: space-between; gap: 10px; }
+  .history-item-title { font-size: 0.9rem; font-weight: 600; }
+  .history-item-date { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+  .history-item-snippet { font-size: 0.8rem; color: var(--muted); margin-top: 6px; }
+  .empty { color: var(--muted); font-size: 0.88rem; padding: 20px 0; text-align: center; }
+
+  #historyDetail { margin-top: 14px; }
+  .back-link { background: none; border: none; color: var(--muted); font-size: 0.82rem; cursor: pointer; padding: 0 0 10px; }
+  .back-link:hover { color: var(--text); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Transcriber</h1>
+    <p class="sub">Paste video URLs (or upload files) to get spoken transcripts — runs locally via Whisper.</p>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="new">New</button>
+      <button class="tab-btn" data-tab="history">History</button>
+    </div>
+
+    <section id="newPanel">
+      <div class="card">
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="url">Paste URL(s)</button>
+          <button type="button" class="mode-btn" data-mode="file">Upload file(s)</button>
+        </div>
+
+        <form id="form">
+          <textarea id="urls" rows="3" placeholder="Paste one or more video URLs, one per line…&#10;(Instagram, YouTube, TikTok, X/Twitter, and other yt-dlp-supported sites)"></textarea>
+
+          <div id="fileDrop" class="file-drop" style="display:none">
+            Click to choose video/audio file(s)
+            <input type="file" id="files" multiple accept="video/*,audio/*" style="display:none" />
+            <div class="file-names" id="fileNames"></div>
+          </div>
+
+          <div class="options">
+            <label>Language
+              <select id="lang">
+                <option value="auto">Auto-detect</option>
+                <option value="hi">Hindi</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <label>Model
+              <select id="model">
+                <option value="tiny">tiny (fastest)</option>
+                <option value="base">base</option>
+                <option value="small">small</option>
+                <option value="medium" selected>medium (recommended)</option>
+                <option value="large-v3">large-v3 (most accurate, slow)</option>
+              </select>
+            </label>
+            <label><input type="checkbox" id="romanize" checked /> Romanize Hindi</label>
+          </div>
+
+          <button type="submit" class="primary" id="submitBtn">Transcribe</button>
+        </form>
+      </div>
+
+      <div class="jobs" id="jobsList"></div>
+    </section>
+
+    <section id="historyPanel" style="display:none">
+      <div id="historyList"></div>
+      <div id="historyDetail" style="display:none"></div>
+    </section>
+  </div>
+
+<script>
+// ---------- tabs ----------
+const tabBtns = document.querySelectorAll('.tab-btn');
+const newPanel = document.getElementById('newPanel');
+const historyPanel = document.getElementById('historyPanel');
+
+tabBtns.forEach(btn => btn.addEventListener('click', () => {
+  tabBtns.forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const tab = btn.dataset.tab;
+  newPanel.style.display = tab === 'new' ? 'block' : 'none';
+  historyPanel.style.display = tab === 'history' ? 'block' : 'none';
+  if (tab === 'history') loadHistory();
+}));
+
+// ---------- mode toggle (url vs file) ----------
+let currentMode = 'url';
+const modeBtns = document.querySelectorAll('.mode-btn');
+const urlsInput = document.getElementById('urls');
+const fileDrop = document.getElementById('fileDrop');
+const filesInput = document.getElementById('files');
+const fileNames = document.getElementById('fileNames');
+
+modeBtns.forEach(btn => btn.addEventListener('click', () => {
+  modeBtns.forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentMode = btn.dataset.mode;
+  urlsInput.style.display = currentMode === 'url' ? 'block' : 'none';
+  fileDrop.style.display = currentMode === 'file' ? 'block' : 'none';
+}));
+
+fileDrop.addEventListener('click', () => filesInput.click());
+filesInput.addEventListener('change', () => {
+  const names = Array.from(filesInput.files).map(f => f.name);
+  fileNames.textContent = names.join(', ');
+});
+
+// ---------- submit ----------
+const form = document.getElementById('form');
+const submitBtn = document.getElementById('submitBtn');
+const jobsList = document.getElementById('jobsList');
+const langSelect = document.getElementById('lang');
+const modelSelect = document.getElementById('model');
+const romanizeCheckbox = document.getElementById('romanize');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+
+  try {
+    let jobIds = [];
+
+    if (currentMode === 'url') {
+      const urls = urlsInput.value.split('\n').map(u => u.trim()).filter(Boolean);
+      if (!urls.length) { submitBtn.disabled = false; return; }
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          urls, language: langSelect.value, romanize: romanizeCheckbox.checked, model: modelSelect.value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'Something went wrong.'); submitBtn.disabled = false; return; }
+      jobIds = data.job_ids;
+    } else {
+      if (!filesInput.files.length) { submitBtn.disabled = false; return; }
+      const fd = new FormData();
+      Array.from(filesInput.files).forEach(f => fd.append('files', f));
+      fd.append('language', langSelect.value);
+      fd.append('romanize', romanizeCheckbox.checked);
+      fd.append('model', modelSelect.value);
+      const res = await fetch('/api/jobs', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'Something went wrong.'); submitBtn.disabled = false; return; }
+      jobIds = data.job_ids;
+    }
+
+    jobIds.forEach(id => startJobCard(id));
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+// ---------- job persistence across page reloads ----------
+// The server keeps job state in memory for JOB_RETENTION_SECONDS regardless
+// of any single page load, but the browser only knows which job IDs to poll
+// if we remember them ourselves. Stash them in localStorage so a refresh
+// (or an accidental tab close) doesn't lose visibility into in-flight jobs.
+const ACTIVE_JOBS_KEY = 'transcriber_active_jobs';
+const ACTIVE_JOB_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2h - well past any realistic job duration
+
+function getActiveJobs() {
+  try { return JSON.parse(localStorage.getItem(ACTIVE_JOBS_KEY) || '{}'); } catch { return {}; }
+}
+function saveActiveJob(id) {
+  const jobs = getActiveJobs();
+  jobs[id] = Date.now();
+  localStorage.setItem(ACTIVE_JOBS_KEY, JSON.stringify(jobs));
+}
+function removeActiveJob(id) {
+  const jobs = getActiveJobs();
+  delete jobs[id];
+  localStorage.setItem(ACTIVE_JOBS_KEY, JSON.stringify(jobs));
+}
+
+function startJobCard(jobId, { resumed = false } = {}) {
+  if (!resumed) saveActiveJob(jobId);
+  const card = document.createElement('div');
+  card.className = 'job-card';
+  card.id = `job-${jobId}`;
+  card.innerHTML = `
+    <div class="job-head">
+      <img class="job-thumb" style="display:none" />
+      <div>
+        <div class="job-title">Loading…</div>
+        <div class="job-platform"></div>
+      </div>
+    </div>
+    <div class="job-stage"><span class="spinner"></span>Queued…</div>
+    <div class="result-block" style="display:none"></div>
+  `;
+  jobsList.prepend(card);
+  pollJob(jobId);
+}
+
+async function pollJob(jobId, failCount = 0) {
+  const card = document.getElementById(`job-${jobId}`);
+  if (!card) return;
+
+  try {
+    const res = await fetch(`/api/jobs/${jobId}`);
+    const job = await res.json();
+    if (!res.ok) throw new Error(job.error || 'Job not found');
+
+    renderJobCard(card, job);
+
+    if (job.status === 'queued' || job.status === 'running') {
+      setTimeout(() => pollJob(jobId, 0), 1200);
+    }
+  } catch (err) {
+    // Transient network hiccups shouldn't kill the whole poll loop - retry
+    // a few times with backoff before actually giving up.
+    if (failCount < 4) {
+      setTimeout(() => pollJob(jobId, failCount + 1), 1500 * (failCount + 1));
+      return;
+    }
+    removeActiveJob(jobId);
+    const stageEl = card.querySelector('.job-stage');
+    stageEl.className = 'job-stage error';
+    stageEl.textContent = `Error: ${err.message}`;
+  }
+}
+
+// Resume polling for any jobs still active when the page was last open.
+(function resumeActiveJobs() {
+  const jobs = getActiveJobs();
+  const cutoff = Date.now() - ACTIVE_JOB_MAX_AGE_MS;
+  Object.entries(jobs).forEach(([id, ts]) => {
+    if (ts < cutoff) { removeActiveJob(id); return; }
+    startJobCard(id, { resumed: true });
+  });
+})();
+
+function renderJobCard(card, job) {
+  const titleEl = card.querySelector('.job-title');
+  const platformEl = card.querySelector('.job-platform');
+  const thumbEl = card.querySelector('.job-thumb');
+  const stageEl = card.querySelector('.job-stage');
+  const resultEl = card.querySelector('.result-block');
+
+  const preview = job.preview || {};
+  titleEl.textContent = preview.title || job.source || 'Untitled';
+  platformEl.textContent = preview.platform || '';
+  if (preview.thumbnail) {
+    thumbEl.src = preview.thumbnail;
+    thumbEl.style.display = 'block';
+  }
+
+  if (job.status === 'error') {
+    removeActiveJob(job.id);
+    stageEl.className = 'job-stage error';
+    stageEl.innerHTML = escapeHtml(job.error || 'Failed.');
+    if (job.kind === 'url' && !card.querySelector('.retry-btn')) {
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'btn-sm retry-btn';
+      retryBtn.textContent = 'Retry';
+      retryBtn.addEventListener('click', async () => {
+        retryBtn.disabled = true;
+        const res = await fetch(`/api/jobs/${job.id}/retry`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) startJobCard(data.job_id);
+        else alert(data.error || 'Retry failed.');
+      });
+      stageEl.after(retryBtn);
+    }
+    return;
+  }
+
+  if (job.status === 'done' && job.result) {
+    removeActiveJob(job.id);
+    stageEl.className = 'job-stage';
+    stageEl.textContent = 'Done';
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = renderResult(job.id, job.result);
+    wireResultActions(resultEl, job.id);
+    return;
+  }
+
+  stageEl.className = 'job-stage';
+  stageEl.innerHTML = `<span class="spinner"></span>${escapeHtml(job.stage || 'Working…')}`;
+}
+
+function renderResult(id, result) {
+  const langLabel = result.romanized ? `${result.language} (romanized)` : (result.language || '—');
+  const meta = `Language: ${langLabel} · Model: ${result.model} · Duration: ${result.duration ? result.duration.toFixed(1) + 's' : '—'}`;
+  return `
+    <div class="result-meta">${meta}</div>
+    <textarea class="transcript-box" data-id="${id}">${escapeHtml(result.transcript || '(No speech detected.)')}</textarea>
+    <div class="actions">
+      <button class="btn-sm copy-btn" data-id="${id}">Copy</button>
+      <button class="btn-sm save-btn" data-id="${id}">Save edit</button>
+      <a class="btn-sm" href="/api/history/${id}/export.txt">Export .txt</a>
+      <a class="btn-sm" href="/api/history/${id}/export.srt">Export .srt</a>
+      <a class="btn-sm" href="/api/history/${id}/export.vtt">Export .vtt</a>
+    </div>
+  `;
+}
+
+function wireResultActions(container, id) {
+  const copyBtn = container.querySelector('.copy-btn');
+  const saveBtn = container.querySelector('.save-btn');
+  const textarea = container.querySelector('.transcript-box');
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(textarea.value);
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.textContent = 'Saving…';
+    const res = await fetch(`/api/history/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript: textarea.value }),
+    });
+    saveBtn.textContent = res.ok ? 'Saved!' : 'Failed';
+    setTimeout(() => (saveBtn.textContent = 'Save edit'), 1500);
+  });
+}
+
+// ---------- history ----------
+const historyList = document.getElementById('historyList');
+const historyDetail = document.getElementById('historyDetail');
+const HISTORY_PAGE_SIZE = 50;
+let historyOffset = 0;
+
+// One delegated listener instead of re-binding per item on every page load -
+// avoids piling up duplicate listeners as "Load more" appends more rows.
+historyList.addEventListener('click', (e) => {
+  const item = e.target.closest('.history-item');
+  if (item) openHistoryDetail(item.dataset.id);
+});
+
+function renderHistoryItem(item) {
+  return `
+    <div class="history-item" data-id="${item.id}">
+      <div class="history-item-top">
+        <div class="history-item-title">${escapeHtml(item.title || item.source)}</div>
+        <div class="history-item-date">${new Date(item.created_at * 1000).toLocaleString()}</div>
+      </div>
+      <div class="history-item-snippet">${escapeHtml(item.snippet || '')}${item.snippet && item.snippet.length >= 180 ? '…' : ''}</div>
+    </div>
+  `;
+}
+
+async function loadHistory(reset = true) {
+  historyDetail.style.display = 'none';
+  historyList.style.display = 'block';
+  if (reset) {
+    historyOffset = 0;
+    historyList.innerHTML = '<div class="empty">Loading…</div>';
+  }
+
+  const res = await fetch(`/api/history?limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset}`);
+  const data = await res.json();
+  const items = data.items || [];
+
+  if (reset && !items.length) {
+    historyList.innerHTML = '<div class="empty">No transcripts yet.</div>';
+    return;
+  }
+  if (reset) historyList.innerHTML = '';
+
+  const loadMoreBtn = historyList.querySelector('.load-more-btn');
+  if (loadMoreBtn) loadMoreBtn.remove();
+
+  historyList.insertAdjacentHTML('beforeend', items.map(renderHistoryItem).join(''));
+  historyOffset += items.length;
+
+  if (historyOffset < data.total) {
+    const btn = document.createElement('button');
+    btn.className = 'btn-sm load-more-btn';
+    btn.textContent = `Load more (${data.total - historyOffset} remaining)`;
+    btn.addEventListener('click', () => loadHistory(false));
+    historyList.appendChild(btn);
+  }
+}
+
+async function openHistoryDetail(id) {
+  const res = await fetch(`/api/history/${id}`);
+  const row = await res.json();
+  if (!res.ok) { alert(row.error || 'Not found'); return; }
+
+  historyList.style.display = 'none';
+  historyDetail.style.display = 'block';
+
+  const langLabel = row.romanized ? `${row.language} (romanized)` : (row.language || '—');
+  const meta = `Language: ${langLabel} · Model: ${row.model} · Duration: ${row.duration ? row.duration.toFixed(1) + 's' : '—'}`;
+
+  historyDetail.innerHTML = `
+    <button class="back-link">&larr; Back to history</button>
+    <div class="card">
+      <div class="job-title" style="margin-bottom:6px">${escapeHtml(row.title || row.source)}</div>
+      <div class="result-meta">${meta}</div>
+      <textarea class="transcript-box" data-id="${row.id}">${escapeHtml(row.transcript || '')}</textarea>
+      <div class="actions">
+        <button class="btn-sm copy-btn" data-id="${row.id}">Copy</button>
+        <button class="btn-sm save-btn" data-id="${row.id}">Save edit</button>
+        <a class="btn-sm" href="/api/history/${row.id}/export.txt">Export .txt</a>
+        <a class="btn-sm" href="/api/history/${row.id}/export.srt">Export .srt</a>
+        <a class="btn-sm" href="/api/history/${row.id}/export.vtt">Export .vtt</a>
+        <button class="btn-sm danger delete-btn" data-id="${row.id}">Delete</button>
+      </div>
+    </div>
+  `;
+
+  wireResultActions(historyDetail, row.id);
+  historyDetail.querySelector('.back-link').addEventListener('click', loadHistory);
+  historyDetail.querySelector('.delete-btn').addEventListener('click', async () => {
+    if (!confirm('Delete this transcript permanently?')) return;
+    await fetch(`/api/history/${row.id}`, { method: 'DELETE' });
+    loadHistory();
+  });
+}
+
+// ---------- utils ----------
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
