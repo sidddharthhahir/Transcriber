@@ -6,3 +6,5 @@ uploads/
 app.log
 server.log
 .DS_Store
+launchd.out.log
+launchd.err.log

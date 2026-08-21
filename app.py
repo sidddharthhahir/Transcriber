@@ -712,9 +712,15 @@ def handle_too_large(_e):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
+    # Debug/reloader default OFF: this runs as an always-on background service
+    # (launchd), and the interactive Werkzeug debugger + auto-reloader are a
+    # development convenience, not something that should sit on a 24/7
+    # process - the debugger in particular allows arbitrary code execution
+    # if it were ever reachable. Set FLASK_DEBUG=1 for interactive dev runs.
+    debug = os.environ.get("FLASK_DEBUG") == "1"
     logger.info(f"Starting Transcriber on port {port} "
                 f"(default_model={DEFAULT_MODEL}, download_workers={DOWNLOAD_WORKERS}, "
-                f"transcribe_concurrency={TRANSCRIBE_CONCURRENCY})")
+                f"transcribe_concurrency={TRANSCRIBE_CONCURRENCY}, debug={debug})")
     # threaded=True so multiple jobs (batch mode, or one user + polling) don't
     # freeze the server behind a single in-flight request.
-    app.run(host="127.0.0.1", port=port, debug=True, threaded=True)
+    app.run(host="127.0.0.1", port=port, debug=debug, threaded=True)

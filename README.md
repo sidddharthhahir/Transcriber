@@ -27,6 +27,40 @@ python3 -m venv venv
 
 Then open http://127.0.0.1:5050
 
+## Running 24/7 (macOS, via launchd)
+
+A plain `python app.py` dies when the terminal closes, the Mac restarts, or
+it crashes. `launchd` (macOS's own service manager) fixes all three: it
+starts the server at login and restarts it automatically if it ever exits.
+
+```bash
+# 1. Edit launchd/com.siddharth.transcriber.plist first if your username/
+#    paths differ, then install it:
+cp launchd/com.siddharth.transcriber.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siddharth.transcriber.plist
+launchctl enable gui/$(id -u)/com.siddharth.transcriber
+```
+
+Useful commands:
+
+```bash
+# check status / find the current PID
+launchctl print gui/$(id -u)/com.siddharth.transcriber
+
+# stop it (won't restart until you bootstrap it again)
+launchctl bootout gui/$(id -u)/com.siddharth.transcriber
+
+# view logs
+tail -f launchd.out.log launchd.err.log
+```
+
+**Note:** this makes the process itself resilient (survives crashes,
+restarts on login) - it does *not* keep your Mac awake. If the Mac sleeps,
+the service pauses with it. For genuine round-the-clock uptime, disable
+sleep for this Mac in System Settings → Battery/Energy, or run
+`caffeinate` - that's a system-level tradeoff (battery life, fan noise)
+worth deciding deliberately rather than something this setup forces on you.
+
 ## Features
 
 - **Multi-platform** — not Instagram-only; any URL `yt-dlp` can resolve works.
