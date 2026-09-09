@@ -1,34 +1,30 @@
 # Transcriber
 
-Local-first web app for downloading media audio and generating editable transcripts.
+Transcriber is a local Flask app that downloads media audio and produces editable transcripts with Whisper.
 
-## Overview
+## What it does
 
-Transcriber accepts supported video URLs (YouTube, Instagram, TikTok, X/Twitter, and more via `yt-dlp`) or direct file uploads, extracts audio with `ffmpeg`, and transcribes speech with `faster-whisper`. It also supports Hindi romanization, transcript export, and local transcript history.
+- Transcribes supported video URLs via `yt-dlp` (YouTube, Instagram, TikTok, X/Twitter, and others).
+- Transcribes uploaded audio/video files.
+- Supports batch URL submissions.
+- Lets users choose Whisper model size per job (`tiny` → `large-v3`).
+- Shows per-job progress and retry for failed URL jobs.
+- Stores completed transcripts in local SQLite history (`history.db`).
+- Exports transcripts as `.txt`, `.srt`, and `.vtt`.
+- Romanizes Hindi (Devanagari → casual Latin script) when enabled.
 
-## Key Features
+## Tech stack
 
-- URL-based and direct file-upload transcription flows
-- Batch processing for multiple URLs
-- Per-run Whisper model selection (`tiny` to `large-v3`)
-- Live job progress with retry support
-- Editable transcripts with export to `.txt`, `.srt`, and `.vtt`
-- Local history storage in SQLite (`history.db`)
-- Health endpoint, structured logging, and configurable worker/timeouts
+- Python + Flask
+- `faster-whisper`
+- `yt-dlp`
+- `ffmpeg`
+- SQLite
 
-## Tech Stack
+## Run locally
 
-- Python
-- Flask (web/API server)
-- `faster-whisper` (speech-to-text)
-- `yt-dlp` (media retrieval)
-- `ffmpeg` (audio extraction)
-- SQLite (history persistence)
-
-## Setup & Run
-
-1. Install `ffmpeg` on your system (example on macOS: `brew install ffmpeg`).
-2. Create and activate a virtual environment, then install dependencies:
+1. Install `ffmpeg`.
+2. Create a virtualenv and install dependencies:
 
 ```bash
 cd /home/runner/work/Transcriber/Transcriber
@@ -36,33 +32,37 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ```
 
-3. Start the app:
+3. Start the server:
 
 ```bash
 ./venv/bin/python app.py
 ```
 
-4. Open: http://127.0.0.1:5050
+4. Open http://127.0.0.1:5050.
 
-## Usage
+## Configuration
 
-1. Paste one or more supported URLs, or upload an audio/video file.
-2. Choose transcription options (including model size).
-3. Wait for processing to complete and review/edit the transcript.
-4. Export output (`.txt`, `.srt`, `.vtt`) or find prior items in History.
+Environment variables used by `app.py`:
 
-## Project Structure
+- `PORT` (default: `5050`)
+- `FLASK_DEBUG` (`1` enables Flask debug/reloader)
+- `DEFAULT_MODEL` (default: `medium`)
+- `DOWNLOAD_WORKERS` (default: `4`)
+- `TRANSCRIBE_CONCURRENCY` (default: `1`)
+- `JOB_RETENTION_SECONDS` (default: `21600`)
+- `FFMPEG_TIMEOUT` (default: `120`)
+- `YTDLP_SOCKET_TIMEOUT` (default: `30`)
+- `COOKIES_FROM_BROWSER` or `COOKIES_FILE` (optional `yt-dlp` auth helpers)
 
-- `app.py` — main Flask application and API logic
-- `templates/` — web UI templates
-- `requirements.txt` — Python dependencies
-- `test_app.py` — unit tests
-- `launchd/` — optional macOS service files
+## Tests
 
-## Contribution
+```bash
+./venv/bin/python -m unittest test_app.py -v
+```
 
-Contributions are welcome through focused pull requests with a clear description and test updates where applicable.
+## Repository layout
 
-## License / Contact
-
-No repository license file is currently included. For ownership or usage questions, contact the repository owner via GitHub: `@sidddharthhahir`.
+- `app.py` — Flask app, background jobs, API endpoints
+- `templates/index.html` — single-page UI
+- `test_app.py` — smoke tests
+- `launchd/` — optional macOS launchd service files

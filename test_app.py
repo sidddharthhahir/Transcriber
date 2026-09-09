@@ -1,13 +1,4 @@
-"""
-Automated smoke/regression tests for transcriber.
-
-Covers pure logic (romanization, caption formatting) and basic API wiring.
-Deliberately does NOT test the actual download/transcribe pipeline - that's
-network- and audio-dependent and was verified manually against real videos
-during development. Run with:
-
-    ./venv/bin/python -m unittest test_app.py -v
-"""
+"""Smoke tests for romanization, caption formatting, and core API routes."""
 import sys
 import unittest
 from pathlib import Path

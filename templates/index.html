@@ -258,7 +258,6 @@
   </div>
 
 <script>
-// ---------- tabs ----------
 const tabBtns = document.querySelectorAll('.tab-btn');
 const newPanel = document.getElementById('newPanel');
 const historyPanel = document.getElementById('historyPanel');
@@ -272,7 +271,6 @@ tabBtns.forEach(btn => btn.addEventListener('click', () => {
   if (tab === 'history') loadHistory();
 }));
 
-// ---------- mode toggle (url vs file) ----------
 let currentMode = 'url';
 const modeBtns = document.querySelectorAll('.mode-btn');
 const urlsInput = document.getElementById('urls');
@@ -294,7 +292,6 @@ filesInput.addEventListener('change', () => {
   fileNames.textContent = names.join(', ');
 });
 
-// ---------- submit ----------
 const form = document.getElementById('form');
 const submitBtn = document.getElementById('submitBtn');
 const jobsList = document.getElementById('jobsList');
@@ -341,13 +338,8 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// ---------- job persistence across page reloads ----------
-// The server keeps job state in memory for JOB_RETENTION_SECONDS regardless
-// of any single page load, but the browser only knows which job IDs to poll
-// if we remember them ourselves. Stash them in localStorage so a refresh
-// (or an accidental tab close) doesn't lose visibility into in-flight jobs.
 const ACTIVE_JOBS_KEY = 'transcriber_active_jobs';
-const ACTIVE_JOB_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2h - well past any realistic job duration
+const ACTIVE_JOB_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 function getActiveJobs() {
   try { return JSON.parse(localStorage.getItem(ACTIVE_JOBS_KEY) || '{}'); } catch { return {}; }
@@ -398,8 +390,6 @@ async function pollJob(jobId, failCount = 0) {
       setTimeout(() => pollJob(jobId, 0), 1200);
     }
   } catch (err) {
-    // Transient network hiccups shouldn't kill the whole poll loop - retry
-    // a few times with backoff before actually giving up.
     if (failCount < 4) {
       setTimeout(() => pollJob(jobId, failCount + 1), 1500 * (failCount + 1));
       return;
@@ -411,7 +401,6 @@ async function pollJob(jobId, failCount = 0) {
   }
 }
 
-// Resume polling for any jobs still active when the page was last open.
 (function resumeActiveJobs() {
   const jobs = getActiveJobs();
   const cutoff = Date.now() - ACTIVE_JOB_MAX_AGE_MS;
@@ -509,14 +498,11 @@ function wireResultActions(container, id) {
   });
 }
 
-// ---------- history ----------
 const historyList = document.getElementById('historyList');
 const historyDetail = document.getElementById('historyDetail');
 const HISTORY_PAGE_SIZE = 50;
 let historyOffset = 0;
 
-// One delegated listener instead of re-binding per item on every page load -
-// avoids piling up duplicate listeners as "Load more" appends more rows.
 historyList.addEventListener('click', (e) => {
   const item = e.target.closest('.history-item');
   if (item) openHistoryDetail(item.dataset.id);
@@ -604,7 +590,6 @@ async function openHistoryDetail(id) {
   });
 }
 
-// ---------- utils ----------
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
