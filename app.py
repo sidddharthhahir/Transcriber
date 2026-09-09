@@ -26,21 +26,12 @@ DB_PATH = BASE_DIR / "history.db"
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# Config - env-overridable so behavior can be tuned without editing code.
-# ---------------------------------------------------------------------------
-
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "medium")
-DOWNLOAD_WORKERS = int(os.environ.get("DOWNLOAD_WORKERS", "4"))  # I/O-bound: safe to parallelize
-TRANSCRIBE_CONCURRENCY = int(os.environ.get("TRANSCRIBE_CONCURRENCY", "1"))  # CPU-bound: serialize
+DOWNLOAD_WORKERS = int(os.environ.get("DOWNLOAD_WORKERS", "4"))
+TRANSCRIBE_CONCURRENCY = int(os.environ.get("TRANSCRIBE_CONCURRENCY", "1"))
 JOB_RETENTION_SECONDS = int(os.environ.get("JOB_RETENTION_SECONDS", str(6 * 3600)))
 FFMPEG_TIMEOUT = int(os.environ.get("FFMPEG_TIMEOUT", "120"))
 YTDLP_SOCKET_TIMEOUT = int(os.environ.get("YTDLP_SOCKET_TIMEOUT", "30"))
-
-# ---------------------------------------------------------------------------
-# Logging - structured, timestamped, rotated to a file instead of scattered
-# print() calls that vanish once the terminal scrollback fills up.
-# ---------------------------------------------------------------------------
 
 logger = logging.getLogger("transcriber")
 logger.setLevel(logging.INFO)
@@ -56,14 +47,6 @@ if not shutil.which("ffmpeg"):
     logger.error("ffmpeg not found on PATH - every job will fail at the audio-extraction "
                   "step. Install it (e.g. `brew install ffmpeg`) and restart.")
 
-
-# ---------------------------------------------------------------------------
-# Whisper models - loaded lazily per size, cached for the process lifetime.
-# Transcription itself is CPU-bound, so a semaphore keeps at most
-# TRANSCRIBE_CONCURRENCY inferences running at once regardless of how many
-# jobs are in flight - running several Whisper models concurrently on CPU
-# just makes all of them slower via cache/core contention, not faster.
-# ---------------------------------------------------------------------------
 
 _models = {}
 _models_lock = threading.Lock()
@@ -85,17 +68,11 @@ def get_model(size: str = "medium"):
     return _models[size]
 
 
-# ---------------------------------------------------------------------------
-# Hindi -> Hinglish romanization
-# ---------------------------------------------------------------------------
-
 _ROMAN_VOWELS = set("aeiouAEIOU")
 
 
 def _strip_word_final_schwa(word: str) -> str:
-    """Hindi drops the inherent 'a' at the end of a word in speech
-    (सब is said "sab", not "saba"). Approximate that so romanized output
-    reads like casual Hinglish instead of formal transliteration."""
+    """Approximate Hindi schwa deletion in romanized output."""
     if len(word) < 2 or word[-1] != "a":
         return word
     if word[-2] in _ROMAN_VOWELS:
@@ -126,20 +103,12 @@ def devanagari_to_roman(text: str) -> str:
     return "".join(process_token(t) for t in tokens)
 
 
-# ---------------------------------------------------------------------------
-# History (SQLite) - every completed transcription is saved here so it
-# survives server restarts and can be exported/revisited later.
-# ---------------------------------------------------------------------------
-
 def _db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-# `with conn:` only wraps a transaction (commit/rollback on exit) - it does
-# NOT close the connection. Closing explicitly here avoids leaking a file
-# handle/connection on every single DB call.
 def _run(fn):
     conn = _db()
     try:
@@ -215,15 +184,6 @@ def delete_history_row(hid: str) -> bool:
     return cur.rowcount > 0
 
 
-# ---------------------------------------------------------------------------
-# Jobs - in-memory, background-processed. One job per URL or uploaded file.
-#
-# _jobs is unbounded in principle (a long-running server processing many
-# batches over days would otherwise leak memory forever), so a background
-# sweep prunes finished jobs older than JOB_RETENTION_SECONDS. Nothing is
-# lost when that happens - the completed result already lives in history.db.
-# ---------------------------------------------------------------------------
-
 class DownloadError(Exception):
     pass
 
@@ -236,13 +196,13 @@ _executor = ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS)
 def new_job(kind: str, source: str, options: dict) -> dict:
     job = {
         "id": uuid.uuid4().hex[:12],
-        "kind": kind,  # "url" | "file"
+        "kind": kind,
         "source": source,
         "options": options,
-        "status": "queued",  # queued | running | done | error
+        "status": "queued",
         "stage": "Queued…",
         "error": None,
-        "preview": None,  # {title, thumbnail, platform}
+        "preview": None,
         "result": None,
         "created_at": time.time(),
     }
@@ -277,8 +237,7 @@ def _prune_old_jobs():
 
 
 def _cleanup_orphaned_uploads():
-    """Files only linger here if the server was killed mid-job. Anything
-    older than an hour is definitely orphaned, not mid-flight."""
+    """Remove old uploads left behind by interrupted jobs."""
     now = time.time()
     for f in UPLOAD_DIR.glob("*"):
         try:
@@ -386,10 +345,6 @@ def run_job(job_id: str, file_path: str | None = None):
                 pass
 
 
-# ---------------------------------------------------------------------------
-# yt-dlp / ffmpeg helpers
-# ---------------------------------------------------------------------------
-
 def _ydl_opts(**extra):
     opts = {
         "quiet": True,
@@ -410,8 +365,7 @@ def _ydl_opts(**extra):
 
 
 def fetch_preview(url: str):
-    """Best-effort metadata fetch (title/thumbnail) before downloading, so the
-    UI can show what it's about to transcribe. Non-fatal if it fails."""
+    """Fetch title/thumbnail metadata without failing job creation."""
     import yt_dlp
     try:
         with yt_dlp.YoutubeDL(_ydl_opts(skip_download=True)) as ydl:
@@ -436,7 +390,7 @@ def download_media(url: str, work_dir: str) -> str:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
-        logger.warning(f"yt-dlp failed for {url}: {e}")  # full detail in log
+        logger.warning(f"yt-dlp failed for {url}: {e}")
         raise DownloadError(
             "Couldn't download this video. It's likely private, age-restricted, "
             "or the platform is blocking anonymous requests for this post "
@@ -474,19 +428,8 @@ def extract_audio(video_path: str, work_dir: str) -> str:
 
 def run_transcription(audio_path: str, language: str | None = None, model_size: str = "medium"):
     model = get_model(model_size)
-    # vad_filter skips music/silence/noise segments instead of letting Whisper
-    # hallucinate words over them - reels are full of background music, so
-    # this matters a lot more here than for typical podcast-style audio.
-    #
-    # condition_on_previous_text=False + no_repeat_ngram_size stop the classic
-    # Whisper failure mode on unclear/code-switched audio: it locks onto a
-    # phrase and repeats it ("khil fortunately... khil fortunately...").
-    #
-    # Everything below is wrapped in the semaphore because faster-whisper's
-    # transcribe() is lazy - the actual CPU-heavy decoding happens while
-    # iterating segments_iter, not at the call itself. Only holding the
-    # semaphore around the call (and not the iteration) would let multiple
-    # transcriptions decode concurrently anyway, defeating the point.
+    # Decoder work happens during iteration, so hold the semaphore while
+    # consuming segments_iter to enforce concurrency limits.
     with _transcribe_semaphore:
         segments_iter, info = model.transcribe(
             audio_path,
@@ -505,10 +448,6 @@ def run_transcription(audio_path: str, language: str | None = None, model_size: 
 
     return segments, result_info
 
-
-# ---------------------------------------------------------------------------
-# Caption/export formatting
-# ---------------------------------------------------------------------------
 
 def _srt_timestamp(seconds: float) -> str:
     ms = int(round(seconds * 1000))
@@ -544,10 +483,6 @@ def to_vtt(segments: list) -> str:
         lines.append("")
     return "\n".join(lines)
 
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
 
 _start_time = time.time()
 
@@ -712,15 +647,9 @@ def handle_too_large(_e):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
-    # Debug/reloader default OFF: this runs as an always-on background service
-    # (launchd), and the interactive Werkzeug debugger + auto-reloader are a
-    # development convenience, not something that should sit on a 24/7
-    # process - the debugger in particular allows arbitrary code execution
-    # if it were ever reachable. Set FLASK_DEBUG=1 for interactive dev runs.
+    # Keep debug/reloader off by default for long-running local service use.
     debug = os.environ.get("FLASK_DEBUG") == "1"
     logger.info(f"Starting Transcriber on port {port} "
                 f"(default_model={DEFAULT_MODEL}, download_workers={DOWNLOAD_WORKERS}, "
                 f"transcribe_concurrency={TRANSCRIBE_CONCURRENCY}, debug={debug})")
-    # threaded=True so multiple jobs (batch mode, or one user + polling) don't
-    # freeze the server behind a single in-flight request.
     app.run(host="127.0.0.1", port=port, debug=debug, threaded=True)
